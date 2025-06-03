@@ -1,42 +1,23 @@
 from flask import Flask, render_template, request, redirect, url_for
+from replit import db
 import random
 from datetime import datetime
-import json
-import os
 
 app = Flask(__name__)
 
 # Define the set of symbols
 symbols = ['*', '#', '@', '$', '%', '&', '^', '!', '?', '+']
 
-# File to store game state
-STATE_FILE = 'game_state.json'
-
-# Helper functions to manage game state with JSON
-def load_game_state():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_game_state(state):
-    with open(STATE_FILE, 'w') as f:
-        json.dump(state, f)
-
 @app.route('/', methods=['GET', 'POST'])
 def symbolle():
-    # Load game state from JSON
-    state = load_game_state()
-
-    # Initialize or load lives
-    lives = int(state.get('lives', 3))
-    last_reset = state.get('last_reset', None)
+    # Load and manage lives
+    lives = int(db.get('lives', '3'))
+    last_reset = db.get('last_reset', None)
     today = datetime.now().strftime('%Y-%m-%d')
     if last_reset != today:
         lives = 3
-        state['lives'] = lives
-        state['last_reset'] = today
-        save_game_state(state)
+        db['lives'] = str(lives)
+        db['last_reset'] = today
 
     # Check if player can continue playing
     if lives == 0:
@@ -47,23 +28,22 @@ def symbolle():
         feedback = []
     else:
         # Load or initialize game state
-        hidden_sequence = state.get('hidden_sequence', None)
+        hidden_sequence = db.get('hidden_sequence', None)
         if hidden_sequence is None:
             hidden_sequence = ''.join(random.choices(symbols, k=5))
-            state['hidden_sequence'] = hidden_sequence
-            state['attempts'] = 5
-            state['guesses'] = []
-            state['feedback'] = []
-            state['game_over'] = False
-            state['message'] = ''
-            save_game_state(state)
+            db['hidden_sequence'] = hidden_sequence
+            db['attempts'] = '5'
+            db['guesses'] = []
+            db['feedback'] = []
+            db['game_over'] = 'False'
+            db['message'] = ''
 
         # Retrieve current game state
-        attempts = int(state['attempts'])
-        guesses = state['guesses']
-        feedback = state['feedback']
-        game_over = state['game_over']
-        message = state.get('message', '')
+        attempts = int(db['attempts'])
+        guesses = db['guesses']
+        feedback = db['feedback']
+        game_over = db['game_over'] == 'True'
+        message = db.get('message', '')
 
         # Handle guess submission
         if request.method == 'POST' and not game_over:
@@ -73,27 +53,26 @@ def symbolle():
                 feedback_for_guess = [guess[i] == hidden_sequence[i] for i in range(5)]
                 guesses.append(guess)
                 feedback.append(feedback_for_guess)
-                state['guesses'] = guesses
-                state['feedback'] = feedback
+                db['guesses'] = guesses
+                db['feedback'] = feedback
 
                 # Check win condition
                 if all(feedback_for_guess):
                     game_over = True
                     message = "Congratulations! You guessed it right!"
-                    state['game_over'] = True
-                    state['message'] = message
+                    db['game_over'] = 'True'
+                    db['message'] = message
                 else:
                     # Decrement attempts
                     attempts -= 1
-                    state['attempts'] = attempts
+                    db['attempts'] = str(attempts)
                     if attempts <= 0:
                         lives -= 1
                         game_over = True
                         message = f"Failed to guess. Lives left: {lives}"
-                        state['lives'] = lives
-                        state['game_over'] = True
-                        state['message'] = message
-                save_game_state(state)
+                        db['lives'] = str(lives)
+                        db['game_over'] = 'True'
+                        db['message'] = message
 
     # Render the game page
     return render_template('symbolle.html', 
@@ -108,14 +87,12 @@ def symbolle():
 @app.route('/new_game', methods=['POST'])
 def new_game():
     # Reset game state
-    state = load_game_state()
-    state.pop('hidden_sequence', None)
-    state.pop('attempts', None)
-    state.pop('guesses', None)
-    state.pop('feedback', None)
-    state.pop('game_over', None)
-    state.pop('message', None)
-    save_game_state(state)
+    db.pop('hidden_sequence', None)
+    db.pop('attempts', None)
+    db.pop('guesses', None)
+    db.pop('feedback', None)
+    db.pop('game_over', None)
+    db.pop('message', None)
     return redirect(url_for('symbolle'))
 
 if __name__ == '__main__':
